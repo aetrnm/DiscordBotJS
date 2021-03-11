@@ -87,9 +87,16 @@ client.on('message', (msg) => {
 });
 
 
-let loop = true;
+
+
+const prefix = '#';
+
+let loop = false;
+
+let queue = [];
 
 function changeLoopValue() {
+    console.log('WE ARE HERE');
     loop = !loop;
 }
 
@@ -101,52 +108,104 @@ function printLoopValue(message) {
     message.channel.send('loop is now: ***OFF***');
 }
 
-//play commands
-client.on('message', async message => {
-    if (!message.guild) return;
-    if(message.author.id === client.user.id) return;
-
-    const words = message.content.split(' ');
-    const link = words[1]?.toString();
-
-    if (words[0] === '#play') {
-        printLoopValue(message);
-        await play(message, link);
+function addToQueue(message, link) {
+    queue.push(link);
+    ytdl(link).on('info', (info) => {
+        queueToPrint.push(info.videoDetails.title);
+    });
+    printQueue(message);
+    if(queue.length === 1) {
+        play(message).then(r => printLoopValue(message));
     }
-
-    if (words[0] === '#loop'){
-        changeLoopValue();
-        printLoopValue(message);
-    }
-
-    if (words[0] === '#stop'){
-        await disconnectBot(message);
-    }
-});
+}
 
 async function disconnectBot(message){
     if(message.member.voice.channelID === message.guild.me.voice.channelID){
         message.guild.me.voice.channel.leave();
     }
+    else {
+        message.channel.send('Join a voice channel where the bot is to disconnect it!');
+    }
 }
 
-async function play(message, link){
+async function play(message){
+    let link = queue[0];
     if (message.member.voice.channel) {
         const connection = await message.member.voice.channel.join();
         const dispatcher = connection.play(ytdl(link, { filter: 'audioonly'}));
         dispatcher.on('finish', () => {
             if (loop){              //Playing once more
-                play(message, link);
+                play(message);
             }
             else{
                 ytdl(link).on('info', (info) => {
-                    message.channel.send('Finished playing: ' + info.videoDetails.title); // the video title
+                    message.channel.send('Finished playing: ' + '`' + info.videoDetails.title + '`'); // the video title
                 });
+                queue.pop();
+                queueToPrint.pop();
+                if (queue.length === 0){
+                    setTimeout(function(){
+                        //do what you need here
+                        message.channel.send('The queue is over!');
+                    }, 2000);
+                    return;
+                }
+                play(message);
             }
         });
-    } else {
-        message.channel.send('You need to join a voice channel first!');
+    }
+    else {
+        message.channel.send('Join a voice channel first to play some music!');
     }
 }
 
-client.login(process.env.BOT_TOKEN)
+
+let queueToPrint = [];
+
+function printQueue(message){
+    setTimeout(function(){
+        message.channel.send("**Queue:**\r\n" + "`" + queueToPrint.join('\r\n') + "`");
+    }, 1100);
+}
+
+//play commands
+client.on('message', async message => {
+    if (!message.guild) return;
+    if(message.author.id === client.user.id) return;
+
+    const inputlist = message.content.split(' ');
+    const command = inputlist[0]?.toString();
+    const link = inputlist[1]?.toString();
+
+    if (command === prefix + 'loop'){
+        changeLoopValue();
+        printLoopValue(message);
+    }
+
+    if (command === prefix + 'stop'){
+        await disconnectBot(message);
+    }
+
+    if (typeof link === "undefined") {
+        return;
+    }
+
+    if (command === prefix + 'play') {
+        printLoopValue(message);
+        addToQueue(message, link);
+    }
+    
+    if (command === prefix + 'add'){
+        addToQueue(message, link);
+    }
+});
+
+
+
+
+
+
+
+
+
+client.login(process.env.BOT_TOKEN).then(r => console.log('Successfully logged in!'));
