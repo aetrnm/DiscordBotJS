@@ -91,12 +91,13 @@ client.on('message', (msg) => {
 
 const prefix = '#';
 
+let currentSongLink;
+
 let loop = false;
 
 let queue = [];
 
 function changeLoopValue() {
-    console.log('WE ARE HERE');
     loop = !loop;
 }
 
@@ -113,9 +114,11 @@ function addToQueue(message, link) {
     ytdl(link).on('info', (info) => {
         queueToPrint.push(info.videoDetails.title);
     });
-    printQueue(message);
+    setTimeout(function(){
+        printQueue(message);
+    }, 500);
     if(queue.length === 1) {
-        play(message).then(r => printLoopValue(message));
+        play(message).then(() => printLoopValue(message));
     }
 }
 
@@ -130,6 +133,7 @@ async function disconnectBot(message){
 
 async function play(message){
     let link = queue[0];
+    currentSongLink = link;
     if (message.member.voice.channel) {
         const connection = await message.member.voice.channel.join();
         const dispatcher = connection.play(ytdl(link, { filter: 'audioonly'}));
@@ -141,16 +145,7 @@ async function play(message){
                 ytdl(link).on('info', (info) => {
                     message.channel.send('Finished playing: ' + '`' + info.videoDetails.title + '`'); // the video title
                 });
-                queue.pop();
-                queueToPrint.pop();
-                if (queue.length === 0){
-                    setTimeout(function(){
-                        //do what you need here
-                        message.channel.send('The queue is over!');
-                    }, 2000);
-                    return;
-                }
-                play(message);
+                playNextSong(message, 0);
             }
         });
     }
@@ -168,14 +163,31 @@ function printQueue(message){
     }, 1100);
 }
 
+function playNextSong(message, key) { // 1 to skip, 0 not to
+    queue.shift();
+    queueToPrint.shift();
+    if(queue.length === 0) {
+        setTimeout(function(){
+            message.channel.send('The queue is over!');
+        }, 1000);
+        return;
+    }
+    if (key === 1) {
+        ytdl(currentSongLink).on('info', (info) => {
+            message.channel.send('Skipped: ' + '`' + info.videoDetails.title + '`'); // the video title
+        });
+    }
+    play(message).then(() => printQueue(message));
+}
+
 //play commands
 client.on('message', async message => {
     if (!message.guild) return;
     if(message.author.id === client.user.id) return;
 
-    const inputlist = message.content.split(' ');
-    const command = inputlist[0]?.toString();
-    const link = inputlist[1]?.toString();
+    const inputList = message.content.split(' ');
+    const command = inputList[0]?.toString();
+    const link = inputList[1]?.toString();
 
     if (command === prefix + 'loop'){
         changeLoopValue();
@@ -184,6 +196,14 @@ client.on('message', async message => {
 
     if (command === prefix + 'stop'){
         await disconnectBot(message);
+    }
+
+    if (command === prefix + 'skip'){
+        if(queue.length === 0) {
+            message.channel.send('Nothing to skip, queue empty!');
+            return;
+        }
+        playNextSong(message, 1);
     }
 
     if (typeof link === "undefined") {
